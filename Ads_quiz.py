@@ -1,164 +1,265 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Apr  5 07:17:26 2023
+Created on Sun May  7 00:47:10 2023
 
 @author: DELL
 """
-# import library functions
-import matplotlib.pyplot as plt
+#import modules
 import pandas as pd
+import matplotlib.pyplot as plt
+
 import numpy as np
-import seaborn as sns
+from sklearn import cluster
+import sklearn.metrics as skmet
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from scipy.optimize import curve_fit
+import cluster_tools as ct
 
-# define functions
+# define Funtions
 
 
-def world_bank_data(filename):
+def world_bank_data(csv_file):
     """
     Reads in data from a World Bank data file in CSV format.
 
     Args:
-        filename (str): The name of the file to read.
+        csv_file (str): The name of the file to read.
 
     Returns:
         A pandas DataFrame containing the data from the file.
     """
     # Read in the CSV file using pandas
-    df_data = pd.read_csv(filename, header=2)
-    # Drop unnecessary columns
-    df_data.drop(['Country Code', 'Indicator Code',
-                  'Unnamed: 66'], axis=1, inplace=True)
+    df_data = pd.read_csv(csv_file, header=2)
+    return df_data
+
+
+def process_world_bank_data(df_data):
+    """
+    This function takes a pandas dataframe containing world bank data as\n" 
+    "input and performs the following operations:
+    1. Filters the dataframe to select only the\n" 
+    "CO2 emissions (metric tons per capita)" indicator.
+    2. Removes columns with all NaN values.
+    3. Drops the "Country Code", "Indicator Name", and "Indicator Code" columns.
+    4. Sets the "Country Name" column as the index.
+    5. Transposes the dataframe.
+    6. Selects data for the United Kingdom, Belgium, Brazil, China, India,\n"
+    " United States, and World for the years 2000-2014.
+    7. Transposes the resulting dataframe again.
+
+    Args:
+        df (pandas.DataFrame): Input dataframe containing world bank data.
+
+    Returns:
+        pandas.DataFrame: Processed dataframe containing the selected data\n"
+        " for the specified countries and years.
+    """
+    # Filter the dataframe to select only the "CO2 emissions (metric tons per capita)" indicator.
+    df_data = df_data[df_data["Indicator Name"] ==
+                      "CO2 emissions (metric tons per capita)"]
+    # Remove columns with all NaN values.
     df_data = df_data.dropna(axis=1, how='all')
+    # Drop the "Country Code", "Indicator Name", and "Indicator Code" columns.
+    df_data = df_data.drop(
+        ["Country Code", "Indicator Name", "Indicator Code"], axis=1)
+    # Set the "Country Name" column as the index.
+    df_data = df_data.set_index("Country Name").T
+    # Transpose the dataframe.
+    df_new = df_data.transpose()
+    # Select data for the specified countries and years.
+    df_new = df_new.loc[['United Kingdom', 'Belgium',
+                         'Brazil', 'China', 'India', 'United States', 'World']]
+    # Transpose the resulting dataframe again.
+    df_new = df_new.transpose()
+    return df_new
 
-    # Transpose the dataframe to create a dataframe with years as columns
-    df_t = df_data.set_index(['Country Name', 'Indicator Name']).T
+def normalize_dataframe():
+    """ Normalizes all columns in the dataframe to the 0-1 range.
 
-    # Transpose the cleaned dataframe to create a dataframe with countries as columns
-    df_c = df_t.transpose()
-    df_c = df_c.loc[['United States', 'China',
-                     'India', 'Nigeria', 'World'], '2010':'2021']
-    indicators = [
-        'Population growth (annual %)',
-        'Mortality rate, under-5 (per 1,000 live births)',
-        'Population, total']
-    df_c = df_c.loc[df_c.index.get_level_values(1).isin(indicators)]
-    df_t = df_c.transpose()
+    Args:
+        df (pandas.DataFrame): Input dataframe to be normalized.
 
-    return df_t, df_c
+    Returns:
+        pandas.DataFrame: Normalized dataframe.
+        pandas.Series: Minimum values of the original dataframe.
+        pandas.Series: Maximum values of the original dataframe.
+    """
+    df_min = df_new.min()
+    df_max = df_new.max()
+    df_norm = (df_new - df_min) / (df_max - df_min)
+    return df_norm, df_min, df_max
 
 
-# read world bank data csv file into pandas dataframe
-df_t, df_c = world_bank_data('API_19_DS2_en_csv_v2_5346672.csv')
+# Read in the data file
+df_data = world_bank_data('API_19_DS2_en_csv_v2_5361599.csv')
 
-# print the transposed data
-print(df_t)
-# explore the data
-print(df_t.head())
-print(df_t.describe())
+# Process the data
+df_new = process_world_bank_data(df_data)
 
-corr_matrix = df_t.corr()
-print(corr_matrix)
+# Print the processed data
+print(df_new)
+print(df_new.describe())
 
-# extract Mortality rate, under-5 (per 1,000 live births) data from df_t
-motality = df_t.loc[:, (slice(
-    None), 'Mortality rate, under-5 (per 1,000 live births)')]
-rate = motality.transpose()
-rate.reset_index(inplace=True)
-rate.drop('Indicator Name', axis=1, inplace=True)
-mot_rate = rate.set_index('Country Name').transpose()
+# show the heatmap
+print(ct.map_corr(df_new))
 
-# extract annual population growth data from df_t
-pop = df_t.loc[:, (slice(None), 'Population growth (annual %)')]
-growth = pop.transpose()
-growth.reset_index(inplace=True)
-growth.drop('Indicator Name', axis=1, inplace=True)
-pop_growth = growth.set_index('Country Name').transpose()
+corr = df_new.corr()
 
-# extract population total fro the dataframe
-pop_t = df_t.loc[:, (slice(None), 'Population, total')]
-t = pop_t.transpose()
-t.reset_index(inplace=True)
-t.drop('Indicator Name', axis=1, inplace=True)
-pop_total = t.set_index('Country Name').transpose()
+# Find lowest correlation coefficient
+min_corr = corr.min().min()
 
-# print the extracted dataframes based on indicators
-print(pop_growth)
-print(mot_rate)
-print(pop_total)
+# Find the columns with the lowest correlation coefficient
+low_corr_cols = corr[corr == min_corr].stack().index.tolist()
 
-# Line plot of mrtality rate
-fig, ax = plt.subplots(figsize=(10, 6))
-for country in mot_rate.columns:
-    ax.plot(mot_rate.index, mot_rate[country], label=('Country Name'))
-# set labels
-ax.set_xlabel('Year')
-ax.set_ylabel('Mortality rate, under-5 (per 1,000 live births)')
-ax.set_title('Under-5 Mortality Rate by Country and Year')
+# Print the result
+print('Columns with the lowest correlation coefficient:')
+print(low_corr_cols)
+
+# United Kingdom v indian has the lowest correlation coefficent
+# copy the dataframe to prevent changes of the original dataframe(df_new)
+df_fit = df_new[['United Kingdom', 'India']].copy()
+
+df_fit, df_min, df_max = ct.scaler(df_fit)
+print(df_fit.describe())
+
+# Normalize the dataframe
+
+data_norm = StandardScaler().fit_transform(df_fit)
+
+silhouette_scores = []
+for k in range(2, 11):
+    kmeans = KMeans(n_clusters=k, random_state=20)
+    kmeans.fit(data_norm)
+    labels = kmeans.labels_
+    cen = kmeans.cluster_centers_
+    score = skmet.silhouette_score(data_norm, labels)
+    silhouette_scores.append(score)
+    print(f"Silhouette score for {k} clusters: {score}")
+
+
+# Add the cluster labels as a new column to the dataframe
+df_new['Cluster'] = kmeans.labels_
+
+#data_orig = df_fit * (df_max - df_min) + df_min
+print(df_new)
+print(kmeans.cluster_centers_)
+
+
+# Plot 3 clusters
+Nc = 3  # number of cluster centres
+
+kmeans = cluster.KMeans(n_clusters=Nc)
+kmeans.fit(df_fit)
+
+# extract labels and cluster centres
+labels = kmeans.labels_
+cen = kmeans.cluster_centers_
+
+plt.figure(figsize=(6.0, 6.0))
+# scatter plot with colours selected using the cluster numbers
+plt.scatter(df_new["United Kingdom"], df_new["India"], c=labels, cmap="tab10")
+
+# show cluster centres
+center = ct.backscale(cen, df_min, df_max)
+xc = center[:, 0]
+yc = center[:, 1]
+plt.scatter(xc, yc, c="b", marker="H", s=200)
+# c = colour, s = size
+
+plt.xlabel("United Kingdom")
+plt.ylabel("India")
+plt.title("Fig:2. 3 clusters")
+plt.show()
+
+# Creation of simple model(s) fitting data sets with curve_fit.
+
+# Filter the rows with the specified country and indicators and drop irrelevant columns
+df_t = df_data[(df_data["Country Name"] == "United Kingdom") & (
+    df_data["Indicator Name"].isin(["Urban population", "Urban population growth (annual %)"]))]
+
+# Convert "Unnamed: 66" column to float and drop irrelevant columns
+df_t['Unnamed: 66'] = df_t['Unnamed: 66'].astype(float)
+df_t.drop(['Country Name', 'Country Code', 'Indicator Name',
+          'Indicator Code', 'Unnamed: 66'], axis=1, inplace=True)
+
+# Transpose the filtered dataframe and rename the columns
+df_curve = df_t.transpose()
+df_curve = df_curve.rename(
+    columns={6157: "Urban population", 6158: "Urban population growth (annual %)"})
+
+# Reset the index of the transposed dataframe and rename the columns
+df_curve = df_curve.reset_index()
+df_curve = df_curve.dropna()
+df_curve.columns = ['Date', 'Urban population',
+                    'Urban population growth (annual %)']
+df_curve['Urban population'] = df_curve['Urban population'].astype(int)
+
+df_curve['Date'] = df_curve['Date'].astype(int)
+
+# initial quess
+p0 = [50000000, 0.6, 1960]
+
+# define exponential function
+
+
+def exp_func(x, a, b, c):
+    """Computes exponential function with scale and growth as free parameters
+    """
+    return a * np.exp(b * (x - c))
+
+
+xdata = df_curve['Date']
+ydata = df_curve['Urban population']
+
+popt, pcov = curve_fit(exp_func, xdata, ydata, p0=p0)
+
+# Print the fit parameters
+print('Fit parameters:')
+print('a =', popt[0])
+print('b =', popt[1])
+print('c =', popt[2])
+
+# Plot the data and the fit
+plt.plot(xdata, ydata, '--', label='Data')
+plt.plot(xdata, exp_func(xdata, *popt), 'r-', label='Fit')
 plt.legend()
-plt.show()  # show the graph
-
-# Bar plot Mortality rate, under-5 (per 1,000 live births)
-fig, ax = plt.subplots(figsize=(10, 6))
-mot_rate.plot(kind='bar', ax=ax)
-ax.set_xlabel('Year')
-ax.set_ylabel('Mortality rate, under-5 (per 1,000 live births)')
-ax.set_title('Under-5 Mortality Rate by Country and Year')
-plt.ylim(0, 1.4 * max(mot_rate.max()))  # set y-axis limit
-# show the bar graph
+plt.xlabel('Year')
+plt.ylabel('Urban Population (millions)')
+plt.title('Fig:3. Exponential Fit of Urban Population')
 plt.show()
 
-# line plot of population growth
-fig, ax = plt.subplots(figsize=(10, 6))
-for country in pop_growth.columns:
-    ax.plot(pop_growth.index, pop_growth[country], label=country)
-# set appropraite labels
-ax.set_title('Population growth (annual %)')
-ax.set_xlabel('Year')
-ax.set_ylabel('Annual pop growth')
+y_pred = exp_func(2040, *popt)
+print(y_pred)
 
-# Add a legend and gridlines
-ax.legend(loc='upper left', frameon=False, fontsize='small')
-ax.grid(True, linestyle='--', alpha=0.5)
-
-# Show the plot
-plt.show()
+# define err_ranges
 
 
-# bar plot of Population growth (annual %)
-fig, ax = plt.subplots(figsize=(10, 6))
-pop_growth.plot(kind='bar', ax=ax, label=country)
-ax.set_xlabel('Year')
-ax.set_ylabel('Annual pop growth')
-ax.set_title('Population growth (annual %')
-plt.ylim(0, 1.4 * max(pop_growth.max()))  # set y-axis limit
-plt.show()
-# plot a scatter plot of population total for the countries
-us_pop = pop_total['United States']
-china_pop = pop_total['China']
-india_pop = pop_total['India']
-nigeria_pop = pop_total['Nigeria']
+def err_ranges():
+    """
+    Calculates the confidence intervals for the fit parameters.
 
-# Create a scatter plot of china, india and nigeria v United states
-plt.scatter(us_pop, china_pop, label='China')
-plt.scatter(us_pop, india_pop, label='India')
-plt.scatter(us_pop, nigeria_pop, label='Nigeria')
-plt.xlabel('Population of United States')
-plt.ylabel('Population')
-plt.title('Population of China, India, and Nigeria vs United States')
-plt.legend()
-plt.show()
+    Parameters:
+    
+    func (function): The function used to fit the data.
 
-# calculate the mean mortality rate and annual population growth
-mean_mot_rate = np.mean(mot_rate)
-mean_pop_growth = np.mean(pop_growth)
-print(mean_mot_rate)
-print(mean_pop_growth)
+    Returns:
+    confs (array): The confidence intervals for the fit parameters.
+    """
 
-# calculate correlation matrix
-corr_matrix = pop_growth.corr()
+    perr = np.sqrt(np.diag(pcov))
 
-# create heatmap
-sns.heatmap(corr_matrix, annot=True, cmap='coolwarm')
+    n = len(ydata)    # number of data points
 
-# show plot
-plt.show()
+    tval = 2.306      # t-value for 95% confidence interval with degrees of freedom
+    confs = tval * perr * \
+        np.sqrt(1/n + (x_pred - np.mean(xdata))**2 /
+                np.sum((xdata - np.mean(xdata))**2))
+    return confs
+
+
+x_pred = np.array([2040])
+y_pred = exp_func(x_pred, *popt)
+confs = err_ranges()
+print(
+    f"Predicted urban population in 2040: {y_pred[0]:.0f} +/- {confs[0]:.0f}")
