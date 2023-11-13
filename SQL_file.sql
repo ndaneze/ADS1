@@ -18,7 +18,7 @@ WHERE Customer_ID IS NULL
 --Query Demonstrating Nominal Data--
 SELECT Account_Number, Email_Address
 FROM Customer_Details
-LIMIT 5;
+LIMIT 4;
 
 --Query Demonstrating Ordinal Data--
 SELECT Account_Name, Risk_Ratings
@@ -47,7 +47,7 @@ FROM Customer_Details
 GROUP BY Email_Address
 HAVING COUNT(*) > 1;
 
---Diplay Inactive Accounts with big balances--
+--Diplay Inactive/dormant Accounts with big balances--
 SELECT *
 FROM Account_Details
 WHERE Account_Status = 'Inactive' AND Balance > 100000;
